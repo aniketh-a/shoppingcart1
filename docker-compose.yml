@@ -1,0 +1,22 @@
+version: '3.8'
+ 
+services:
+  nodejs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: node-container
+    #restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/shopping-cart
+    depends_on:
+      - mongo
+  mongo:
+      container_name: mongodb-container
+      image: mongo
+      volumes:
+        - ./data:/data/db
+      ports:
+        - 27017:27017

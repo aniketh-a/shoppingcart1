@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping Cart</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Shopping Cart</h1>
+
+    <form id="addProductForm">
+        <label for="productName">Product Name:</label>
+        <input type="text" id="productName" name="productName" required>
+        <br>
+        <label for="productPrice">Product Price:</label>
+        <input type="number" id="productPrice" name="productPrice" step="0.01" required>
+        <br>
+        <label for="productQuantity">Product Quantity:</label>
+        <input type="number" id="productQuantity" name="productQuantity" required>
+        <br>
+        <button type="submit">Add Product</button>
+        <img src="newcartgif.gif" alt="Adding product" id="addingProductGif" />
+        <div id="cartActions">
+            <button id="placeOrder" class="action-button">Place Order</button>
+            <button id="viewOrderDetails" class="action-button">View Order Details</button>
+        </div>
+    </form>
+
+    <div id="cart">
+        <h2>Your Cart</h2>
+        <ul id="cartItems"></ul>
+        <p><span id="totalAmount">0</span></p>
+        <!-- Clear Cart button -->
+        <button id="clearCartButton" class="centered-button">Clear Cart</button>
+    </div>
+
+    <script>
+        let cartData = [];
+
+        async function fetchAndUpdateCart() {
+            // Fetch cart data from server
+            const response = await fetch('/api/cart/viewCart');
+            cartData = await response.json(); // Update global cartData variable
+            cartItems.innerHTML = '';
+            for (const item of cartData) {
+                // Display cart items in the UI
+                const li = document.createElement('li');
+                li.textContent = `${item.quantity} ${item.name}(s) - Rupees ${item.price} each`;
+                const removeButton = document.createElement('button');
+                removeButton.innerHTML = `
+                    <div class="trash">
+                        <div class="top">
+                            <div class="paper"></div>
+                        </div>
+                        <div class="box"></div>
+                        <div class="check">
+                            <svg viewBox="0 0 8 6">
+                                <polyline points="1 3.4 2.71428571 5 7 1"></polyline>
+                            </svg>
+                        </div>
+                    </div>
+                    <span>Remove</span>
+                `;
+                removeButton.classList.add('button');
+                removeButton.addEventListener('click', async () => {
+                    // Handle remove product button click
+                    removeButton.classList.add('delete');
+                    setTimeout(async () => {
+                        await removeProduct(item.name);
+                        removeButton.classList.remove('delete');
+                    }, 2600);
+                });
+                li.appendChild(removeButton);
+                cartItems.appendChild(li);
+            }
+            // Update total amount
+            const totalResponse = await fetch('/api/cart/calculateTotal');
+            const total = await totalResponse.text();
+            totalAmount.textContent = total;
+        }
+
+        async function removeProduct(productName) {
+            // Remove product from the cart
+            const response = await fetch(`/api/cart/removeProduct/${productName}`, {
+                method: 'DELETE',
+            });
+            if (response.ok) {
+                await fetchAndUpdateCart();
+            } else {
+                alert('Error removing product from cart');
+            }
+        }
+
+        const addProductForm = document.getElementById('addProductForm');
+        const cartItems = document.getElementById('cartItems');
+        const totalAmount = document.getElementById('totalAmount');
+
+        addProductForm.addEventListener('submit', async (e) => {
+            // Handle form submit to add product to cart
+            e.preventDefault();
+
+            const productName = addProductForm.productName.value;
+            const productPrice = parseFloat(addProductForm.productPrice.value);
+            const productQuantity = parseInt(addProductForm.productQuantity.value);
+
+            const response = await fetch('/api/cart/addProduct', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ productName, productPrice, productQuantity })
+            });
+
+            if (response.ok) {
+                // Update cart and reset form
+                await fetchAndUpdateCart();
+                addProductForm.reset();
+
+                // Show the GIF 
+                document.getElementById('addingProductGif').style.display = 'block';
+
+                // Hide the GIF after 2 seconds
+                setTimeout(() => {
+                    document.getElementById('addingProductGif').style.display = 'none';
+                }, 2000);
+            } else {
+                alert('Error adding product to cart');
+            }
+        });
+        const clearCartButton = document.getElementById('clearCartButton');
+        clearCartButton.addEventListener('click', async () => {
+            // Handle clear cart button click
+            if (confirm('Are you sure you want to clear your cart?')) {
+                await clearCart();
+            }
+        });
+
+        async function clearCart() {
+            // Clear the cart
+            const response = await fetch('/api/cart/clearCart', {
+                method: 'DELETE'
+            });
+            if (response.ok) {
+                // Clear the cart data and update the UI
+                cartData = [];
+                cartItems.innerHTML = '';
+                totalAmount.textContent = '0';
+            } else {
+                console.error('Error clearing cart:', response.statusText);
+            }
+        }
+        async function placeOrder() {
+            // Place order
+            const response = await fetch('/api/orders/placeOrder', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    orderId: Math.floor(Math.random() * 1000000),
+                    customerCareNumber: '9618431987', // Add customer contact number here
+                    items: cartData
+                })
+            });
+            if (response.ok) {
+                const orderDetails = await response.json();
+                localStorage.setItem('orderDetails', JSON.stringify(orderDetails));
+                alert(`Order placed successfully! Your order ID is: ${orderDetails.orderId}`);
+                await clearCart();
+            } else {
+                alert('Error placing order');
+                console.error(await response.text()); // Log the error response for debugging
+            }
+        }
+
+        const placeOrderButton = document.getElementById('placeOrder');
+        placeOrderButton.addEventListener('click', async () => {
+            // Handle place order button click
+            if (cartData.length === 0) {
+                alert('Your cart is empty. Please add products before placing an order.');
+                return;
+            }
+            await placeOrder();
+        });
+
+        const viewOrderDetailsButton = document.getElementById('viewOrderDetails');
+        viewOrderDetailsButton.addEventListener('click', async () => {
+            // Fetch the most recent order from the server
+            try {
+                const response = await fetch('/api/orders');
+                if (response.ok) {
+                    const orders = await response.json();
+                    // Get the most recent order (assuming orders are sorted by date)
+                    const mostRecentOrder = orders[orders.length - 1];
+                    // Display order details in the console (you can customize this according to your UI)
+                    console.log('Most recent order:', mostRecentOrder);
+                    // Redirect to order details page with the order ID as a query parameter
+                    window.location.href = `/order-details.html?orderId=${mostRecentOrder.orderId}`;
+                } else {
+                    throw new Error('Error fetching orders');
+                }
+            } catch (error) {
+                console.error('Error fetching order details:', error);
+                alert('Error fetching order details');
+            }
+        });
+
+        // Initial fetch and update cart
+        fetchAndUpdateCart();
+    </script>
+</body>
+</html>
